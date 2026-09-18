@@ -4,6 +4,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 import shutil
 import subprocess
@@ -52,7 +53,7 @@ class MemoryStoreTests(unittest.TestCase):
         self.assertNotIn('"content":"old"', recalled["context"])
         self.store.forget(scope="project", topic="decision", project_root=str(self.project_a))
         self.assertEqual(self.store.recall(project_root=str(self.project_a), scopes=["project"])["items"], [])
-        with self.store.connect() as conn:
+        with closing(self.store.connect()) as conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM events").fetchone()[0], 3)
             with self.assertRaises(sqlite3.DatabaseError):
                 conn.execute("DELETE FROM events")

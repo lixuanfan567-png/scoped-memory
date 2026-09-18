@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -18,7 +19,7 @@ class MCPTests(unittest.TestCase):
                 {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "memory_status", "arguments": {}}},
             ]
             proc = subprocess.run(
-                [str(root / "scripts" / "launch_scoped_memory")],
+                [sys.executable, "-m", "scoped_memory.mcp_server"],
                 input="".join(json.dumps(m) + "\n" for m in messages), text=True, capture_output=True,
                 env=env, timeout=10, check=True,
             )

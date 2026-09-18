@@ -150,7 +150,7 @@ class MemoryStore:
           BEGIN SELECT RAISE(ABORT, 'events are append-only'); END;
         """
         with self._file_lock(self.home / "write.lock"):
-            with self.connect() as conn:
+            with self._connection() as conn:
                 conn.execute("PRAGMA journal_mode = WAL")
                 conn.executescript(schema)
                 # Migrate v0.1 stores without changing their event history.
@@ -276,7 +276,7 @@ class MemoryStore:
             return None
         data = json.loads(marker.read_text(encoding="utf-8"))
         project_id = str(data["project_id"])
-        with self.connect() as conn:
+        with self._connection() as conn:
             row = conn.execute("SELECT * FROM projects WHERE project_id = ?", (project_id,)).fetchone()
         if row is None:
             initialized = self.init_project(str(root), data.get("name"))
@@ -292,7 +292,7 @@ class MemoryStore:
     def _latest(self, *, scope: str, topic: str, project_id: str | None, session_id: str | None) -> sqlite3.Row | None:
         query = """SELECT * FROM events WHERE owner_id=? AND scope=? AND topic=?
                    AND project_id IS ? AND session_id IS ? ORDER BY seq DESC LIMIT 1"""
-        with self.connect() as conn:
+        with self._connection() as conn:
             return conn.execute(query, (self.owner_id, scope, topic, project_id, session_id)).fetchone()
 
     def remember(
@@ -444,7 +444,7 @@ class MemoryStore:
           ) AS rank_in_topic
           FROM events e WHERE owner_id=? AND ({' OR '.join(clauses)})
         ) WHERE rank_in_topic=1 AND kind!='forget'"""
-        with self.connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute(sql, [self.owner_id, *params]).fetchall()
 
         terms = [part.casefold() for part in query.split() if part.strip()]
@@ -586,7 +586,7 @@ class MemoryStore:
 
     def status(self, project_root: str | None = None) -> dict[str, Any]:
         project = self.resolve_project(project_root, required=False)
-        with self.connect() as conn:
+        with self._connection() as conn:
             event_count = conn.execute("SELECT COUNT(*) FROM events").fetchone()[0]
             project_count = conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0]
             active_count = conn.execute(
@@ -610,7 +610,7 @@ class MemoryStore:
 
     def verify_audit(self) -> dict[str, Any]:
         checked, invalid = 0, []
-        with self.connect() as conn:
+        with self._connection() as conn:
             rows = conn.execute("SELECT * FROM events ORDER BY seq").fetchall()
         expected_audit = []
         for row in rows:
@@ -654,7 +654,7 @@ class MemoryStore:
         with self._audit_lock():
             temp = self.home / f"events.{os.getpid()}.{uuid.uuid4().hex}.tmp"
             try:
-                with self.connect() as conn, temp.open("w", encoding="utf-8", newline="\n") as output:
+                with self._connection() as conn, temp.open("w", encoding="utf-8", newline="\n") as output:
                     for row in conn.execute("SELECT * FROM events ORDER BY seq"):
                         event = self._row_event(row)
                         output.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + "\n")
@@ -673,9 +673,19 @@ class MemoryStore:
             yield
 
     @contextlib.contextmanager
+    def _connection(self):
+        """Commit or roll back, then close the SQLite handle on every platform."""
+        conn = self.connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
+
+    @contextlib.contextmanager
     def _write_connection(self):
         with self._file_lock(self.home / "write.lock"):
-            with self.connect() as conn:
+            with self._connection() as conn:
                 yield conn
 
     @contextlib.contextmanager

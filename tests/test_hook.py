@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,7 +24,7 @@ class HookTests(unittest.TestCase):
             env = dict(os.environ, SCOPED_MEMORY_HOME=str(store_home), SCOPED_MEMORY_OWNER="tester", PYTHONPATH=str(root))
             hook_input = {"hook_event_name": "SessionStart", "session_id": "s1", "cwd": str(project_a), "source": "startup"}
             proc = subprocess.run(
-                [str(root / "scripts" / "scoped-memory-hook"), "SessionStart"],
+                [sys.executable, str(root / "scripts" / "memory_hook.py"), "SessionStart"],
                 input=json.dumps(hook_input), text=True, capture_output=True, env=env, check=True, timeout=10,
             )
         output = json.loads(proc.stdout)
@@ -37,7 +38,7 @@ class HookTests(unittest.TestCase):
             env = dict(os.environ, SCOPED_MEMORY_HOME=str(Path(temp) / "store"), PYTHONPATH=str(root))
             hook_input = {"hook_event_name": "SessionStart", "session_id": "s1", "cwd": temp, "source": "startup"}
             proc = subprocess.run(
-                [str(root / "scripts" / "scoped-memory-hook"), "SessionStart"],
+                [sys.executable, str(root / "scripts" / "memory_hook.py"), "SessionStart"],
                 input=json.dumps(hook_input), text=True, capture_output=True, env=env, check=True, timeout=10,
             )
         self.assertEqual(json.loads(proc.stdout), {"continue": True})
