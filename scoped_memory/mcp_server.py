@@ -50,6 +50,25 @@ TOOLS = [
             "evidence": {"type": "array", "items": {"type": "string"}}}, "additionalProperties": False},
     },
     {
+        "name": "memory_ingest_project",
+        "description": "Scan a project deterministically into compact EIR/1 facts and dependency edges; no model summary is used.",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+        "inputSchema": {"type": "object", "required": ["project_root"], "properties": {
+            "project_root": {"type": "string"},
+            "max_files": {"type": "integer", "minimum": 1, "maximum": 100000},
+            "max_file_bytes": {"type": "integer", "minimum": 1024, "maximum": 10000000}},
+            "additionalProperties": False},
+    },
+    {
+        "name": "memory_engineering_context",
+        "description": "Read a bounded EIR/1 engineering packet. Returns machine-readable facts without natural-language translation.",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+        "inputSchema": {"type": "object", "required": ["project_root"], "properties": {
+            "project_root": {"type": "string"}, "query": {"type": "string"},
+            "token_budget": {"type": "integer", "minimum": 128, "maximum": 100000}},
+            "additionalProperties": False},
+    },
+    {
         "name": "memory_forget",
         "description": "Append a tombstone for a topic; prior history remains auditable.",
         "annotations": {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False},
@@ -76,6 +95,8 @@ def dispatch(store: MemoryStore, name: str, args: dict[str, Any]) -> dict[str, A
         "memory_remember": store.remember,
         "memory_recall": store.recall,
         "memory_checkpoint": store.checkpoint,
+        "memory_ingest_project": store.ingest_project,
+        "memory_engineering_context": store.engineering_context,
         "memory_forget": store.forget,
     }
     if name == "memory_status":

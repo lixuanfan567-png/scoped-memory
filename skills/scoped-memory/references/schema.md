@@ -31,3 +31,19 @@ Writing the same topic creates a superseding event. Forgetting creates a tombsto
 ```
 
 Prefer symbols, IDs, paths, and short factual clauses. Natural-language polish belongs in final user-facing output, not memory.
+
+## Engineering IR v1
+
+`memory_ingest_project` writes one project-isolated index under the store's `engineering/` directory. The index is deterministic JSON and contains no source bodies.
+
+- `p`: repository-relative path.
+- `k`: language or file kind.
+- `b`: byte size.
+- `h`: truncated SHA-256 content fingerprint.
+- `sym`: top-level symbols.
+- `imp`: imported modules or paths.
+- `role`: `test`, `manifest`, `doc`, or `config`.
+- `edges`: compact `[source,"imp",target]` relationships.
+- `manifests`: dependency and script names from supported manifests.
+
+The latest index digest and statistics are recorded as the project topic `engineering/index/latest`. `memory_engineering_context` returns a query-selected, token-bounded EIR/1 packet. Treat source files as authority and the index as a disposable, rebuildable projection.

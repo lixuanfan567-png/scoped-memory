@@ -39,6 +39,15 @@ class CLITests(unittest.TestCase):
             )
             self.assertEqual(checkpoint["kind"], "checkpoint")
 
+            (project / "main.py").write_text("def run():\n    return 1\n", encoding="utf-8")
+            ingested = self.run_cli(project, home, "ingest", ".")
+            self.assertEqual(ingested["format"], "eir/1")
+            engineering = self.run_cli(
+                project, home, "engineering-context", ".", "--query", "run", "--token-budget", "256",
+            )
+            self.assertEqual(engineering["format"], "eir/1")
+            self.assertLessEqual(engineering["estimated_tokens"], 256)
+
             recalled = self.run_cli(
                 project, home, "recall", ".", "--session-id", "session-1", "--scope", "project",
                 "--scope", "session",

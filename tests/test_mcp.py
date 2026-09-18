@@ -27,10 +27,13 @@ class MCPTests(unittest.TestCase):
         names = {tool["name"] for tool in replies[1]["result"]["tools"]}
         self.assertIn("memory_recall", names)
         self.assertIn("memory_checkpoint", names)
+        self.assertIn("memory_ingest_project", names)
+        self.assertIn("memory_engineering_context", names)
         tools = {tool["name"]: tool for tool in replies[1]["result"]["tools"]}
         self.assertTrue(tools["memory_status"]["annotations"]["readOnlyHint"])
         self.assertFalse(tools["memory_status"]["annotations"]["openWorldHint"])
         self.assertTrue(tools["memory_forget"]["annotations"]["destructiveHint"])
+        self.assertTrue(tools["memory_engineering_context"]["annotations"]["readOnlyHint"])
         self.assertFalse(replies[2]["result"]["isError"] if "isError" in replies[2]["result"] else False)
 
 

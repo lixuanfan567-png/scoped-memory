@@ -499,6 +499,91 @@ class MemoryStore:
             "inherited_project_ids": inherited,
         }
 
+    def ingest_project(
+        self,
+        project_root: str,
+        *,
+        max_files: int = 2000,
+        max_file_bytes: int = 256_000,
+    ) -> dict[str, Any]:
+        """Build a deterministic engineering IR without asking a model to summarize source files."""
+        if not 1 <= int(max_files) <= 100_000:
+            raise MemoryError("max_files must be between 1 and 100000")
+        if not 1_024 <= int(max_file_bytes) <= 10_000_000:
+            raise MemoryError("max_file_bytes must be between 1024 and 10000000")
+        project = self.resolve_project(project_root, required=True)
+        from .engineering import EIR_VERSION, build_engineering_index
+
+        index = build_engineering_index(
+            Path(project.root), max_files=int(max_files), max_file_bytes=int(max_file_bytes),
+        )
+        index_dir = self.home / "engineering"
+        index_dir.mkdir(parents=True, exist_ok=True)
+        index_path = index_dir / f"{project.project_id}.json"
+        temp = index_dir / f"{project.project_id}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        with self._file_lock(self.home / "engineering.lock"):
+            try:
+                with temp.open("w", encoding="utf-8", newline="\n") as output:
+                    json.dump(index, output, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+                    output.write("\n")
+                    output.flush()
+                    os.fsync(output.fileno())
+                temp.replace(index_path)
+            finally:
+                if temp.exists():
+                    temp.unlink()
+
+        marker = {
+            "v": EIR_VERSION,
+            "digest": index["digest"],
+            "rev": index.get("rev"),
+            "dirty": index.get("dirty", 0),
+            "stats": index["stats"],
+        }
+        event = self.remember(
+            scope="project",
+            topic="engineering/index/latest",
+            content=json.dumps(marker, ensure_ascii=False, sort_keys=True, separators=(",", ":")),
+            project_root=project.root,
+            tags=["engineering-ir", "index"],
+            importance=85,
+            metadata={"format": EIR_VERSION, "index_file": index_path.name},
+        )
+        return {
+            "format": EIR_VERSION,
+            "project_id": project.project_id,
+            "index": str(index_path),
+            "digest": index["digest"],
+            "revision": index.get("rev"),
+            "dirty": index.get("dirty", 0),
+            "stats": index["stats"],
+            "event_id": event["event_id"],
+        }
+
+    def engineering_context(
+        self,
+        project_root: str,
+        *,
+        query: str = "",
+        token_budget: int = 2000,
+    ) -> dict[str, Any]:
+        """Return a bounded machine-readable engineering packet from the latest project index."""
+        if not 128 <= int(token_budget) <= 100_000:
+            raise MemoryError("token_budget must be between 128 and 100000")
+        project = self.resolve_project(project_root, required=True)
+        index_path = self.home / "engineering" / f"{project.project_id}.json"
+        if not index_path.exists():
+            raise MemoryError("engineering index is missing; call memory_ingest_project first")
+        try:
+            index = json.loads(index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise MemoryError(f"engineering index is unreadable: {exc}") from exc
+        from .engineering import bounded_engineering_context
+
+        result = bounded_engineering_context(index, query.strip(), int(token_budget))
+        result.update({"project_id": project.project_id, "index": str(index_path)})
+        return result
+
     def status(self, project_root: str | None = None) -> dict[str, Any]:
         project = self.resolve_project(project_root, required=False)
         with self.connect() as conn:

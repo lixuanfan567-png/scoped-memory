@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "codex-scoped-memory"
-version = "0.2.0"
-description = "Local-first, project-isolated memory and MCP server for coding agents"
+version = "0.3.0"
+description = "Project-isolated memory and compact engineering IR for Codex and DeepSeek Harness"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"

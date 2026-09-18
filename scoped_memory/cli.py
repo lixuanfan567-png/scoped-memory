@@ -54,6 +54,14 @@ def parser() -> argparse.ArgumentParser:
     checkpoint.add_argument("--constraint", action="append", default=[])
     checkpoint.add_argument("--next-step", action="append", default=[])
     checkpoint.add_argument("--evidence", action="append", default=[])
+    ingest = sub.add_parser("ingest")
+    ingest.add_argument("project_root", nargs="?", default=".")
+    ingest.add_argument("--max-files", type=int, default=2000)
+    ingest.add_argument("--max-file-bytes", type=int, default=256_000)
+    engineering = sub.add_parser("engineering-context")
+    engineering.add_argument("project_root", nargs="?", default=".")
+    engineering.add_argument("--query", default="")
+    engineering.add_argument("--token-budget", type=int, default=2000)
     forget = sub.add_parser("forget")
     forget.add_argument("scope", choices=["user", "project", "session"])
     forget.add_argument("topic")
@@ -89,6 +97,14 @@ def main() -> None:
                 summary=args.summary, project_root=args.project_root, session_id=args.session_id,
                 decisions=args.decision, constraints=args.constraint, next_steps=args.next_step,
                 evidence=args.evidence,
+            )
+        elif args.command == "ingest":
+            value = store.ingest_project(
+                args.project_root, max_files=args.max_files, max_file_bytes=args.max_file_bytes,
+            )
+        elif args.command == "engineering-context":
+            value = store.engineering_context(
+                args.project_root, query=args.query, token_budget=args.token_budget,
             )
         elif args.command == "forget":
             value = store.forget(
