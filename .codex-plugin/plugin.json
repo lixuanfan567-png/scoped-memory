@@ -1,12 +1,20 @@
 {
   "name": "scoped-memory",
-  "version": "0.3.0",
+  "version": "0.3.0+codex.20260918183323",
   "description": "Project-isolated memory and compact engineering IR for Codex and DeepSeek Harness.",
   "author": {
     "name": "lixuanfan567-png"
   },
   "license": "MIT",
-  "keywords": ["memory", "context", "project", "mcp", "local-first", "engineering-ir", "deepseek-harness"],
+  "keywords": [
+    "memory",
+    "context",
+    "project",
+    "mcp",
+    "local-first",
+    "engineering-ir",
+    "deepseek-harness"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "Scoped Memory",
@@ -14,7 +22,10 @@
     "longDescription": "Stores append-only project and task memories locally, and builds deterministic EIR/1 code facts for Codex or DeepSeek Harness without turning source into prose.",
     "developerName": "lixuanfan567-png",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Initialize memory for this project",
       "Index this project into compact engineering facts",
