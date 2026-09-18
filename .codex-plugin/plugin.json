@@ -1,6 +1,6 @@
 {
   "name": "scoped-memory",
-  "version": "0.3.0+codex.20260918183656",
+  "version": "0.3.0+codex.20260918183923",
   "description": "Project-isolated memory and compact engineering IR for Codex and DeepSeek Harness.",
   "author": {
     "name": "lixuanfan567-png"

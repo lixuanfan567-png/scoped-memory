@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,7 +12,7 @@ class CLITests(unittest.TestCase):
         repo = Path(__file__).resolve().parents[1]
         env = dict(os.environ, PYTHONPATH=str(repo))
         proc = subprocess.run(
-            [str(repo / "scripts" / "scoped-memory"), "--home", str(home), *args],
+            [sys.executable, "-m", "scoped_memory.cli", "--home", str(home), *args],
             cwd=root, env=env, text=True, capture_output=True, timeout=10,
         )
         self.assertEqual(proc.returncode, expected, proc.stderr)
