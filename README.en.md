@@ -6,6 +6,43 @@ When a project is interrupted, the hardest part is rarely remembering one line f
 
 Scoped Memory is a local engineering-memory tool for Codex and DeepSeek Harness. It separates durable information by person, project, and current task, and uses deterministic scripts to convert a codebase into compact structured facts. Another conversation or agent can consume decisions and engineering relationships directly, without replaying the full chat or first rewriting source code as prose.
 
+## Why the model should not reread the whole project every time
+
+A common workflow asks the model to open many files, explain code, logs, and tests in natural language, and then continue from that explanation. On a large project this repeatedly consumes context. After compression, paths, symbol names, dependency directions, and evidence locations may also disappear.
+
+Scoped Memory separates the work into two layers:
+
+1. **Engineering scripts organize facts.** A deterministic scanner walks the file tree and project manifests, recording file fingerprints, top-level symbols, imports, test locations, dependency names, and Git state. This step is repeatable and does not call a model.
+2. **The model makes decisions and performs the work.** Codex or DeepSeek Harness requests a small set of engineering facts related to the current task, then opens only the source files it actually needs. It does not have to rewrite the repository as an essay before reasoning. Natural language is produced when a result is delivered to a person.
+
+The data flow is:
+
+```text
+Source code, tests, configuration, and Git state
+        ↓
+Deterministic engineering scanner
+        ↓
+Project-isolated EIR/1 engineering index
+        ↓
+Facts selected by question and token budget
+        ↓
+Codex / DeepSeek Harness analyzes, edits, and verifies
+        ↓
+Only the final result is rendered as human language
+```
+
+For example, the model does not first need a paragraph saying that an authentication module depends on a database module. It can receive the symbols in the authentication file, the imported module, the related test, and whether those files changed. When implementation details matter, it opens the exact files instead of walking the entire repository again.
+
+This changes the workflow in practical ways:
+
+- Less repeated reading and summarization leaves more context for reasoning, coding, and tests.
+- Files, symbols, dependencies, and revisions have stable identifiers independent of chat wording.
+- Codex and DeepSeek Harness can share one engineering map instead of maintaining separate prose summaries.
+- Running the scanner after meaningful changes exposes new and changed facts through fingerprints and Git state.
+- The index is navigation and memory, not a replacement for source code, tests, or runtime evidence. Final conclusions still depend on the real project.
+
+The first version is intentionally small and inspectable. It extracts top-level symbols and imports from common Python, JavaScript, and TypeScript files, identifies tests, and reads common dependency manifests. It does not pretend to understand every business rule or prove a call graph from the index alone. Deeper semantic analysis, incremental deltas, and language-server integration can be added in later versions.
+
 ## What belongs in memory
 
 - Lasting work preferences, such as coding style and delivery format.
