@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+PLUGIN_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+export PYTHONPATH="$PLUGIN_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m scoped_memory.mcp_server "$@"

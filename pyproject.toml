@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codex-scoped-memory"
+version = "0.2.0"
+description = "Local-first, project-isolated memory and MCP server for coding agents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{name = "lixuanfan567-png"}]
+keywords = ["codex", "mcp", "memory", "agents"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+]
+
+[project.urls]
+Homepage = "https://github.com/lixuanfan567-png/scoped-memory"
+Repository = "https://github.com/lixuanfan567-png/scoped-memory"
+Issues = "https://github.com/lixuanfan567-png/scoped-memory/issues"
+
+[project.scripts]
+scoped-memory = "scoped_memory.cli:main"
+scoped-memory-mcp = "scoped_memory.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["scoped_memory*"]

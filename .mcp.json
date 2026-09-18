@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "scoped_memory": {
+      "command": "./scripts/launch_scoped_memory",
+      "args": [],
+      "cwd": ".",
+      "enabled": true,
+      "env_vars": ["HOME", "PATH", "USER", "XDG_DATA_HOME", "SCOPED_MEMORY_HOME"]
+    }
+  }
+}

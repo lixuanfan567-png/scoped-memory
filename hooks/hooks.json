@@ -1,0 +1,20 @@
+{
+  "description": "Load a bounded, project-isolated memory packet when a Codex session starts or resumes after compaction.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${PLUGIN_ROOT}/scripts/scoped-memory-hook\" SessionStart",
+            "command_windows": "py -3 \"%PLUGIN_ROOT%\\scripts\\memory_hook.py\" SessionStart",
+            "timeout": 10,
+            "additionalContextLimit": 1500,
+            "statusMessage": "Loading project memory"
+          }
+        ]
+      }
+    ]
+  }
+}
