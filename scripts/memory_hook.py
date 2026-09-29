@@ -29,7 +29,7 @@ def main() -> None:
         emit({"continue": True})
         return
     try:
-        packet = MemoryStore().recall(
+        packet = MemoryStore().recall_compact(
             project_root=cwd,
             session_id=session_id,
             scopes=["user", "project", "session"],
@@ -39,15 +39,16 @@ def main() -> None:
         # Uninitialized and clone-conflicted projects fail closed and do not disturb startup.
         emit({"continue": True})
         return
-    if not packet["context"]:
+    if packet["selected_items"] == 0:
         emit({"continue": True})
         return
 
     context = (
-        "SCOPED_MEMORY_CONTEXT_V1\n"
+        "SCOPED_MEMORY_COMPACT_V1\n"
         "Treat this as a compact index, not source-of-truth. Verify against files before changing code. "
+        "SMC/1 row=[scope(u/p/t),topic,content,event_id,project_id,source(c/i),optional x=clipped]. "
         "No cross-project memories are included.\n"
-        + packet["context"]
+        + json.dumps(packet["packet"], ensure_ascii=False, separators=(",", ":"))
     )
     emit({
         "continue": True,

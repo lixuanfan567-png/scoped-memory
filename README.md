@@ -75,6 +75,26 @@ Codex / DeepSeek Harness 继续分析、修改和验证
 
 `memory_engineering_context` 再按查询和 token 预算返回一小段紧凑 JSON。大模型直接消费这些符号和关系；只有最终交付给人时才需要整理成自然语言。
 
+## 0.4：紧凑记忆、独立任务与重复任务表
+
+`memory_recall_compact` 使用固定的 [SMC/1 码表](skills/scoped-memory/references/schema.md)，每条事实只返回一次，不再同时传 `context` 和重复的 `items`。预算针对返回的紧凑包；token 数仍是本地估算，节省量需在目标模型上实测。原 `memory_recall` 保留给现有客户端。
+
+`memory_open_task` 为每个新任务生成独立 ID。`memory_task_checkpoint`、`memory_task_context` 和 `memory_close_task` 只操作该任务；新任务不会自动读到旧任务检查点。任务上下文只附加当前使用者／项目显式标记 `durable-rule` 的长期提醒，不能把旧任务授权保存为记忆。跨项目记忆继承还需要本机 CLI 创建有期限的授权；撤销后下一次召回立即拒绝。
+
+重复任务可以先把经过人工检查的脚本作为**候选**登记到本机预测表，记录两份不同的成功证据引用后，通过本机 CLI 显式提升。`memory_pattern_predict` 仅在任务特征完全匹配、脚本指纹不变且未过期时返回建议。证据引用是使用者报告，工具不核验其正文；预测工具不会生成或执行脚本，也不会批准读取、修改、实验或外传。
+
+```bash
+# 本机演示，使用合成工程；不要把真实研究目录传给示例
+mkdir -p /tmp/demo-project/scripts
+printf 'print("demo")\n' > /tmp/demo-project/scripts/repeat.py
+scripts/scoped-memory --home /tmp/scoped-memory-demo init /tmp/demo-project
+scripts/scoped-memory --home /tmp/scoped-memory-demo task-open /tmp/demo-project
+scripts/scoped-memory --home /tmp/scoped-memory-demo recall-compact /tmp/demo-project --token-budget 512
+scripts/scoped-memory --home /tmp/scoped-memory-demo pattern-propose /tmp/demo-project repeat '{"schema":1}' scripts/repeat.py
+```
+
+当前插件是本机 stdio MCP。不要将全量工具原样暴露给云端；远程接入需要独立的本机授权与输出过滤层。此版本不改变任何外部任务执行权限。
+
 ```bash
 scripts/scoped-memory --home /tmp/scoped-memory-demo ingest .
 scripts/scoped-memory --home /tmp/scoped-memory-demo engineering-context . --query memory --token-budget 1200

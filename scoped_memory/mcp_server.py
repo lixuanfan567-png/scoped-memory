@@ -39,6 +39,56 @@ TOOLS = [
             "token_budget": {"type": "integer", "minimum": 128, "maximum": 100000}}, "additionalProperties": False},
     },
     {
+        "name": "memory_recall_compact",
+        "description": "Return a single SMC/1 packet; no duplicate items/context representation.",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+        "inputSchema": {"type": "object", "properties": {
+            "project_root": {"type": "string"}, "session_id": {"type": "string"}, "query": {"type": "string"},
+            "scopes": {"type": "array", "items": {"type": "string", "enum": ["user", "project", "session"]}},
+            "token_budget": {"type": "integer", "minimum": 128, "maximum": 100000}}, "additionalProperties": False},
+    },
+    {
+        "name": "memory_open_task",
+        "description": "Create a fresh task identity for an initialized project; no previous task is inherited.",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
+        "inputSchema": {"type": "object", "required": ["project_root"], "properties": {
+            "project_root": {"type": "string"}}, "additionalProperties": False},
+    },
+    {
+        "name": "memory_task_checkpoint",
+        "description": "Write one checkpoint to an open task in this project.",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
+        "inputSchema": {"type": "object", "required": ["project_root", "task_id", "summary"], "properties": {
+            "project_root": {"type": "string"}, "task_id": {"type": "string"}, "summary": {"type": "string"},
+            "decisions": {"type": "array", "items": {"type": "string"}},
+            "constraints": {"type": "array", "items": {"type": "string"}},
+            "next_steps": {"type": "array", "items": {"type": "string"}},
+            "evidence": {"type": "array", "items": {"type": "string"}}}, "additionalProperties": False},
+    },
+    {
+        "name": "memory_task_context",
+        "description": "Read one open task as SMC/1 with explicitly tagged durable user/project reminders; other task facts are excluded.",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+        "inputSchema": {"type": "object", "required": ["project_root", "task_id"], "properties": {
+            "project_root": {"type": "string"}, "task_id": {"type": "string"},
+            "token_budget": {"type": "integer", "minimum": 128, "maximum": 100000}}, "additionalProperties": False},
+    },
+    {
+        "name": "memory_close_task",
+        "description": "Close a task so its task tools cannot read or update it.",
+        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
+        "inputSchema": {"type": "object", "required": ["project_root", "task_id"], "properties": {
+            "project_root": {"type": "string"}, "task_id": {"type": "string"}}, "additionalProperties": False},
+    },
+    {
+        "name": "memory_pattern_predict",
+        "description": "Suggest only an exact-match locally verified script reference; never execute it or grant access.",
+        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+        "inputSchema": {"type": "object", "required": ["project_root", "task_type", "features"], "properties": {
+            "project_root": {"type": "string"}, "task_type": {"type": "string"},
+            "features": {"type": "object"}}, "additionalProperties": False},
+    },
+    {
         "name": "memory_checkpoint",
         "description": "Store a structured task checkpoint for later continuation. Use concise model-readable facts, not conversation prose.",
         "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False},
@@ -85,8 +135,13 @@ TOOLS = [
 ]
 
 
-def result(value: Any) -> dict[str, Any]:
-    return {"content": [{"type": "text", "text": json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True)}]}
+def result(value: Any, *, compact: bool = False) -> dict[str, Any]:
+    options = {"ensure_ascii": False, "sort_keys": True}
+    if compact:
+        options["separators"] = (",", ":")
+    else:
+        options["indent"] = 2
+    return {"content": [{"type": "text", "text": json.dumps(value, **options)}]}
 
 
 def dispatch(store: MemoryStore, name: str, args: dict[str, Any]) -> dict[str, Any]:
@@ -94,6 +149,12 @@ def dispatch(store: MemoryStore, name: str, args: dict[str, Any]) -> dict[str, A
         "memory_init_project": store.init_project,
         "memory_remember": store.remember,
         "memory_recall": store.recall,
+        "memory_recall_compact": store.recall_compact,
+        "memory_open_task": store.open_task,
+        "memory_task_checkpoint": store.task_checkpoint,
+        "memory_task_context": store.task_context,
+        "memory_close_task": store.close_task,
+        "memory_pattern_predict": store.pattern_predict,
         "memory_checkpoint": store.checkpoint,
         "memory_ingest_project": store.ingest_project,
         "memory_engineering_context": store.engineering_context,
@@ -105,7 +166,8 @@ def dispatch(store: MemoryStore, name: str, args: dict[str, Any]) -> dict[str, A
         return result(status)
     if name not in calls:
         raise MemoryError(f"unknown tool: {name}")
-    return result(calls[name](**args))
+    return result(calls[name](**args), compact=name in {
+        "memory_recall_compact", "memory_task_context", "memory_pattern_predict"})
 
 
 def reply(message_id: Any, *, value: Any = None, error: dict[str, Any] | None = None) -> None:

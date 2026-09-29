@@ -8,6 +8,7 @@ from contextlib import closing
 from pathlib import Path
 import shutil
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 from scoped_memory.core import MemoryError, MemoryStore
 
@@ -32,11 +33,21 @@ class MemoryStoreTests(unittest.TestCase):
         local = self.store.recall(project_root=str(self.project_a), scopes=["project"])
         self.assertIn("alpha", local["context"])
         self.assertNotIn("beta", local["context"])
+        with self.assertRaisesRegex(MemoryError, "active local grant"):
+            self.store.recall(project_root=str(self.project_a), scopes=["project"],
+                              inherit_project_ids=[self.b["project_id"]])
+        grant = self.store.approve_inheritance(
+            project_root=str(self.project_a), source_project_id=self.b["project_id"],
+            expires_at=(datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat())
         inherited = self.store.recall(project_root=str(self.project_a), scopes=["project"],
                                       inherit_project_ids=[self.b["project_id"]])
         self.assertIn("beta", inherited["context"])
         beta = next(item for item in inherited["items"] if item["content"] == "beta")
         self.assertEqual(beta["source"], "inherited")
+        self.store.revoke_inheritance(grant_id=grant["grant_id"])
+        with self.assertRaisesRegex(MemoryError, "active local grant"):
+            self.store.recall(project_root=str(self.project_a), scopes=["project"],
+                              inherit_project_ids=[self.b["project_id"]])
 
     def test_session_isolation(self):
         self.store.remember(scope="session", topic="scratch", content="one", project_root=str(self.project_a), session_id="s1")
@@ -107,7 +118,7 @@ class MemoryStoreTests(unittest.TestCase):
         subprocess.run(["git", "config", "user.email", "tests@example.invalid"], cwd=base, check=True)
         subprocess.run(["git", "config", "user.name", "Scoped Memory Tests"], cwd=base, check=True)
         project = self.store.init_project(str(base), "worktree-project")
-        self.assertTrue(Path(project["marker"]).is_relative_to(base / ".git"))
+        self.assertTrue(Path(project["marker"]).parent.samefile(base / ".git"))
         self.assertFalse((base / ".scoped-memory" / "project.json").exists())
         (base / "tracked.txt").write_text("tracked\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=base, check=True)
