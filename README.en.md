@@ -53,7 +53,7 @@ Passwords, keys, personal information, complete conversations, and large command
 
 ## Projects stay separate
 
-Every project has its own identity. By default, one project cannot see another project's memory. Information crosses that boundary only when a person explicitly names the project to inherit from.
+Every project has its own identity. By default, one project cannot see another project's memory. Reading another project's memory requires naming the source project and an active, time-limited grant created through the local CLI. Revocation takes effect on the next recall. A memory fact or task checkpoint cannot grant permission.
 
 Git worktrees from the same repository share an identity, so moving between them does not lose context. A normal directory copy or a fresh clone does not inherit that identity automatically. This prevents unrelated projects from being mistaken for the same one.
 
@@ -68,6 +68,26 @@ Old records are never quietly rewritten. A correction adds a new record and poin
 At the start or resumption of a task, and after context compaction, the plugin retrieves a small selection of memory relevant to the current project. The selection has a firm size limit; it does not pour the entire history back into the conversation.
 
 The command line and MCP tools can also record a decision, create a continuation checkpoint, recall information, or forget a topic. Read operations do not change data, while write operations carry clear permission labels.
+
+## Version 0.4: compact memory, task boundaries, and repeatable patterns
+
+`memory_recall_compact` uses the fixed [SMC/1 codebook](skills/scoped-memory/references/schema.md). It transmits each fact once, without the duplicate `context` and `items` fields of the older response. The budget applies to the compact packet. Token counts are local estimates and savings must be measured with the target model's tokenizer. `memory_recall` remains available for existing clients.
+
+`memory_open_task` creates a fresh task ID. `memory_task_checkpoint`, `memory_task_context`, and `memory_close_task` operate only on that task. A new task does not inherit old task checkpoints. Its context can include user or current-project reminders explicitly tagged `durable-rule`; these reminders never carry forward a prior task's authorization. Cross-project inheritance additionally requires a local CLI grant with an expiry time.
+
+For recurring work, a locally reviewed script can be recorded as a candidate pattern. After two distinct reported success references, a person may promote it through the local CLI. `memory_pattern_predict` only suggests a script when task features match exactly, its fingerprint is unchanged, and it has not expired. Evidence references are user reports; the tool does not validate their contents. Prediction neither generates nor runs a script, and it does not authorize reading, writing, experiment execution, or sharing content.
+
+```bash
+# Local demonstration with a synthetic project only
+mkdir -p /tmp/demo-project/scripts
+printf 'print("demo")\n' > /tmp/demo-project/scripts/repeat.py
+scripts/scoped-memory --home /tmp/scoped-memory-demo init /tmp/demo-project
+scripts/scoped-memory --home /tmp/scoped-memory-demo task-open /tmp/demo-project
+scripts/scoped-memory --home /tmp/scoped-memory-demo recall-compact /tmp/demo-project --token-budget 512
+scripts/scoped-memory --home /tmp/scoped-memory-demo pattern-propose /tmp/demo-project repeat '{"schema":1}' scripts/repeat.py
+```
+
+This is a local stdio MCP service. Remote use requires a separate locally enforced authorization and output-release layer; do not expose the full tool set over a public endpoint. Version 0.4 does not change external task execution permissions.
 
 ## The EIR/1 engineering layer
 

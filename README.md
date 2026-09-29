@@ -53,7 +53,7 @@ Codex / DeepSeek Harness 继续分析、修改和验证
 
 ## 不同项目不会混在一起
 
-每个项目都有独立身份。默认情况下，一个项目看不到另一个项目的记忆。只有使用者明确指定要继承哪个项目时，跨项目内容才会被读取。
+每个项目都有独立身份。默认情况下，一个项目看不到另一个项目的记忆。跨项目读取必须明确指定来源项目，并持有通过本机命令行创建、仍在有效期内的继承授权；撤销后下次召回立即拒绝。记忆事实和任务检查点本身不授予权限。
 
 同一个 Git 仓库的工作树共享项目身份，因此在不同工作树之间切换不会失忆。普通复制或重新克隆的仓库不会自动继承原项目记忆，避免把不相关的工程误认成同一个项目。
 
@@ -75,6 +75,11 @@ Codex / DeepSeek Harness 继续分析、修改和验证
 
 `memory_engineering_context` 再按查询和 token 预算返回一小段紧凑 JSON。大模型直接消费这些符号和关系；只有最终交付给人时才需要整理成自然语言。
 
+```bash
+scripts/scoped-memory --home /tmp/scoped-memory-demo ingest .
+scripts/scoped-memory --home /tmp/scoped-memory-demo engineering-context . --query memory --token-budget 1200
+```
+
 ## 0.4：紧凑记忆、独立任务与重复任务表
 
 `memory_recall_compact` 使用固定的 [SMC/1 码表](skills/scoped-memory/references/schema.md)，每条事实只返回一次，不再同时传 `context` 和重复的 `items`。预算针对返回的紧凑包；token 数仍是本地估算，节省量需在目标模型上实测。原 `memory_recall` 保留给现有客户端。
@@ -94,11 +99,6 @@ scripts/scoped-memory --home /tmp/scoped-memory-demo pattern-propose /tmp/demo-p
 ```
 
 当前插件是本机 stdio MCP。不要将全量工具原样暴露给云端；远程接入需要独立的本机授权与输出过滤层。此版本不改变任何外部任务执行权限。
-
-```bash
-scripts/scoped-memory --home /tmp/scoped-memory-demo ingest .
-scripts/scoped-memory --home /tmp/scoped-memory-demo engineering-context . --query memory --token-budget 1200
-```
 
 ## DeepSeek Harness
 
