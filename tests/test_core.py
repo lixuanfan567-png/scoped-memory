@@ -118,7 +118,7 @@ class MemoryStoreTests(unittest.TestCase):
         subprocess.run(["git", "config", "user.email", "tests@example.invalid"], cwd=base, check=True)
         subprocess.run(["git", "config", "user.name", "Scoped Memory Tests"], cwd=base, check=True)
         project = self.store.init_project(str(base), "worktree-project")
-        self.assertTrue(Path(project["marker"]).is_relative_to(base / ".git"))
+        self.assertTrue(Path(project["marker"]).parent.samefile(base / ".git"))
         self.assertFalse((base / ".scoped-memory" / "project.json").exists())
         (base / "tracked.txt").write_text("tracked\n", encoding="utf-8")
         subprocess.run(["git", "add", "."], cwd=base, check=True)
