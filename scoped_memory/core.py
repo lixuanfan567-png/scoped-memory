@@ -144,6 +144,50 @@ class MemoryStore:
           FOREIGN KEY(replaces_event_id) REFERENCES events(event_id)
         );
         CREATE INDEX IF NOT EXISTS idx_events_scope ON events(owner_id, scope, project_id, session_id, topic, seq);
+        CREATE TABLE IF NOT EXISTS tasks (
+          task_id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          closed_at TEXT,
+          FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        );
+        CREATE TABLE IF NOT EXISTS patterns (
+          pattern_id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL,
+          project_id TEXT NOT NULL,
+          task_type TEXT NOT NULL,
+          signature TEXT NOT NULL,
+          features_json TEXT NOT NULL,
+          script_ref TEXT NOT NULL,
+          script_sha256 TEXT NOT NULL,
+          state TEXT NOT NULL CHECK(state IN ('candidate','verified','stale')),
+          created_at TEXT NOT NULL,
+          verified_at TEXT,
+          expires_at TEXT,
+          FOREIGN KEY(project_id) REFERENCES projects(project_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_patterns_lookup ON patterns(owner_id,project_id,signature);
+        CREATE TABLE IF NOT EXISTS inheritance_grants (
+          grant_id TEXT PRIMARY KEY,
+          owner_id TEXT NOT NULL,
+          target_project_id TEXT NOT NULL,
+          source_project_id TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          revoked_at TEXT,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY(target_project_id) REFERENCES projects(project_id),
+          FOREIGN KEY(source_project_id) REFERENCES projects(project_id)
+        );
+        CREATE TABLE IF NOT EXISTS pattern_observations (
+          observation_id TEXT PRIMARY KEY,
+          pattern_id TEXT NOT NULL,
+          outcome TEXT NOT NULL CHECK(outcome IN ('pass','fail')),
+          evidence_ref TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          UNIQUE(pattern_id,evidence_ref),
+          FOREIGN KEY(pattern_id) REFERENCES patterns(pattern_id)
+        );
         CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events
           BEGIN SELECT RAISE(ABORT, 'events are append-only'); END;
         CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events
@@ -317,6 +361,8 @@ class MemoryStore:
             raise MemoryError("topic and content must be non-empty")
         if not 0 <= int(importance) <= 100:
             raise MemoryError("importance must be between 0 and 100")
+        if scope == "user" and (project_root or session_id):
+            raise MemoryError("user memory cannot be bound to a project or session")
         project = self.resolve_project(project_root, required=scope in {"project", "session"})
         if scope == "session" and not session_id:
             raise MemoryError("session_id is required for session memory")
@@ -354,6 +400,12 @@ class MemoryStore:
         return event
 
     def forget(self, *, scope: str, topic: str, project_root: str | None = None, session_id: str | None = None) -> dict[str, Any]:
+        if scope not in SCOPES:
+            raise MemoryError(f"invalid scope: {scope}")
+        if scope == "user" and (project_root or session_id):
+            raise MemoryError("user memory cannot be bound to a project or session")
+        if scope == "session" and not session_id:
+            raise MemoryError("session_id is required for session memory")
         project = self.resolve_project(project_root, required=scope in {"project", "session"})
         project_id = project.project_id if project else None
         effective_session = session_id if scope == "session" else None
@@ -421,6 +473,10 @@ class MemoryStore:
         inherited = list(dict.fromkeys(str(x) for x in inherit_project_ids if str(x)))
         if current_project_id in inherited:
             inherited.remove(current_project_id)
+        if inherited:
+            if not current_project_id:
+                raise MemoryError("a current project is required for inheritance")
+            self._check_inheritance(current_project_id, inherited)
         if not 128 <= int(token_budget) <= 100_000:
             raise MemoryError("token_budget must be between 128 and 100000")
 
@@ -498,6 +554,135 @@ class MemoryStore:
             "current_project_id": current_project_id,
             "inherited_project_ids": inherited,
         }
+
+    def approve_inheritance(self, *, project_root: str, source_project_id: str,
+                            expires_at: str) -> dict[str, Any]:
+        """Local-only CLI operation; this is deliberately not an MCP tool."""
+        project = self.resolve_project(project_root, required=True)
+        try:
+            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise MemoryError("expires_at must be an ISO-8601 timestamp") from exc
+        if expiry.tzinfo is None or expiry <= datetime.now(timezone.utc):
+            raise MemoryError("expires_at must be a future timestamp with timezone")
+        if source_project_id == project.project_id:
+            raise MemoryError("cannot inherit the current project")
+        grant_id = str(uuid.uuid4())
+        with self._write_connection() as conn:
+            source = conn.execute("SELECT 1 FROM projects WHERE project_id=?", (source_project_id,)).fetchone()
+            if source is None:
+                raise MemoryError("source project is not initialized")
+            conn.execute("""INSERT INTO inheritance_grants
+                (grant_id,owner_id,target_project_id,source_project_id,expires_at,created_at)
+                VALUES(?,?,?,?,?,?)""",
+                (grant_id, self.owner_id, project.project_id, source_project_id,
+                 expiry.astimezone(timezone.utc).isoformat(), utc_now()))
+        return {"grant_id": grant_id, "expires_at": expiry.astimezone(timezone.utc).isoformat()}
+
+    def revoke_inheritance(self, *, grant_id: str) -> dict[str, Any]:
+        with self._write_connection() as conn:
+            changed = conn.execute("""UPDATE inheritance_grants SET revoked_at=?
+                WHERE grant_id=? AND owner_id=? AND revoked_at IS NULL""",
+                (utc_now(), grant_id, self.owner_id)).rowcount
+        if not changed:
+            raise MemoryError("inheritance grant is missing or already revoked")
+        return {"grant_id": grant_id, "revoked": True}
+
+    def _check_inheritance(self, target_project_id: str, sources: list[str]) -> None:
+        with self._connection() as conn:
+            for source in sources:
+                grants = conn.execute("""SELECT expires_at FROM inheritance_grants
+                    WHERE owner_id=? AND target_project_id=? AND source_project_id=?
+                    AND revoked_at IS NULL""",
+                    (self.owner_id, target_project_id, source)).fetchall()
+                if not any(datetime.fromisoformat(row["expires_at"]) > datetime.now(timezone.utc)
+                           for row in grants):
+                    raise MemoryError("cross-project inheritance requires an active local grant")
+
+    def recall_compact(self, *, project_root: str | None = None, session_id: str | None = None,
+                       query: str = "", scopes: Iterable[str] = ("user", "project", "session"),
+                       token_budget: int = 2000) -> dict[str, Any]:
+        """Return each fact once in the versioned SMC/1 transport format."""
+        if not 128 <= int(token_budget) <= 100_000:
+            raise MemoryError("token_budget must be between 128 and 100000")
+        from .compact import compact_packet
+
+        source = self.recall(project_root=project_root, session_id=session_id, query=query,
+                             scopes=scopes, token_budget=100_000)
+        result = compact_packet(source["items"], int(token_budget), estimate_tokens)
+        result["truncated"] = result["truncated"] or source["truncated"]
+        return result
+
+    def open_task(self, project_root: str) -> dict[str, Any]:
+        """Issue a fresh task identity. Existing session IDs are not task identities."""
+        project = self.resolve_project(project_root, required=True)
+        task_id = str(uuid.uuid4())
+        with self._write_connection() as conn:
+            conn.execute("INSERT INTO tasks(task_id,owner_id,project_id,created_at) VALUES(?,?,?,?)",
+                         (task_id, self.owner_id, project.project_id, utc_now()))
+        return {"task_id": task_id, "project_id": project.project_id}
+
+    def _active_task(self, project_root: str, task_id: str) -> Project:
+        project = self.resolve_project(project_root, required=True)
+        with self._connection() as conn:
+            row = conn.execute("SELECT closed_at FROM tasks WHERE task_id=? AND owner_id=? AND project_id=?",
+                               (task_id, self.owner_id, project.project_id)).fetchone()
+        if row is None or row["closed_at"] is not None:
+            raise MemoryError("task is missing, closed, or belongs to another project")
+        return project
+
+    def task_checkpoint(self, *, project_root: str, task_id: str, summary: str,
+                        decisions: list[str] | None = None, constraints: list[str] | None = None,
+                        next_steps: list[str] | None = None, evidence: list[str] | None = None) -> dict[str, Any]:
+        self._active_task(project_root, task_id)
+        return self.checkpoint(summary=summary, project_root=project_root, session_id=task_id,
+                               decisions=decisions, constraints=constraints,
+                               next_steps=next_steps, evidence=evidence)
+
+    def task_context(self, *, project_root: str, task_id: str, token_budget: int = 1200) -> dict[str, Any]:
+        """Recall this task plus explicitly tagged, applicable durable reminders."""
+        project = self._active_task(project_root, task_id)
+        if not 128 <= int(token_budget) <= 100_000:
+            raise MemoryError("token_budget must be between 128 and 100000")
+        from .compact import compact_packet
+
+        durable = self.recall(project_root=project.root, scopes=["user", "project"],
+                              token_budget=100_000)
+        rules = [item for item in durable["items"] if "durable-rule" in item["tags"]]
+        task = self.recall(project_root=project.root, session_id=task_id,
+                           scopes=["session"], token_budget=100_000)
+        result = compact_packet([*rules, *task["items"]], int(token_budget), estimate_tokens)
+        result["truncated"] = result["truncated"] or durable["truncated"] or task["truncated"]
+        result["task_id"] = task_id
+        return result
+
+    def close_task(self, *, project_root: str, task_id: str) -> dict[str, Any]:
+        self._active_task(project_root, task_id)
+        with self._write_connection() as conn:
+            conn.execute("UPDATE tasks SET closed_at=? WHERE task_id=? AND owner_id=?",
+                         (utc_now(), task_id, self.owner_id))
+        return {"task_id": task_id, "closed": True}
+
+    def pattern_propose(self, *, project_root: str, task_type: str, features: dict[str, Any],
+                        script_ref: str, expires_at: str | None = None) -> dict[str, Any]:
+        from .patterns import propose
+        return propose(self, project_root=project_root, task_type=task_type, features=features,
+                       script_ref=script_ref, expires_at=expires_at)
+
+    def pattern_observe(self, *, project_root: str, pattern_id: str, outcome: str,
+                        evidence_ref: str) -> dict[str, Any]:
+        from .patterns import observe
+        return observe(self, project_root=project_root, pattern_id=pattern_id,
+                       outcome=outcome, evidence_ref=evidence_ref)
+
+    def pattern_verify(self, *, project_root: str, pattern_id: str) -> dict[str, Any]:
+        from .patterns import verify
+        return verify(self, project_root=project_root, pattern_id=pattern_id)
+
+    def pattern_predict(self, *, project_root: str, task_type: str,
+                        features: dict[str, Any]) -> dict[str, Any]:
+        from .patterns import predict
+        return predict(self, project_root=project_root, task_type=task_type, features=features)
 
     def ingest_project(
         self,

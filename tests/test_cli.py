@@ -73,6 +73,30 @@ class CLITests(unittest.TestCase):
             )
             self.assertIn("project_root is required", error["error"])
 
+    def test_task_and_pattern_cli_flow(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            project, home = base / "project", base / "store"
+            project.mkdir()
+            (project / "repeat.py").write_text("print('synthetic')\n", encoding="utf-8")
+            self.run_cli(project, home, "init", ".")
+            task_id = self.run_cli(project, home, "task-open", ".")["task_id"]
+            self.run_cli(project, home, "task-checkpoint", ".", task_id, "synthetic-state")
+            self.assertIn("synthetic-state", json.dumps(
+                self.run_cli(project, home, "task-context", ".", task_id)))
+            self.assertEqual(self.run_cli(project, home, "recall-compact", ".")["packet"]["v"], "SMC/1")
+            pattern_id = self.run_cli(project, home, "pattern-propose", ".", "repeat",
+                                      '{"kind":"synthetic"}', "repeat.py")["pattern_id"]
+            for n in (1, 2):
+                self.run_cli(project, home, "pattern-observe", ".", pattern_id, "pass", f"evidence-{n}")
+            self.run_cli(project, home, "pattern-verify", ".", pattern_id)
+            suggestion = self.run_cli(project, home, "pattern-predict", ".", "repeat",
+                                      '{"kind":"synthetic"}')
+            self.assertEqual(suggestion["status"], "verified_match")
+            self.run_cli(project, home, "task-close", ".", task_id)
+            error = self.run_cli(project, home, "task-context", ".", task_id, expected=2)
+            self.assertIn("closed", error["error"])
+
 
 if __name__ == "__main__":
     unittest.main()
