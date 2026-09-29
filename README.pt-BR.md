@@ -53,7 +53,7 @@ Senhas, chaves, dados pessoais, conversas completas e grandes saídas de comando
 
 ## Projetos permanecem separados
 
-Cada projeto recebe uma identidade própria. Por padrão, a memória de um projeto não aparece em outro. O compartilhamento só acontece quando a pessoa informa claramente de qual projeto deseja herdar conteúdo.
+Cada projeto recebe uma identidade própria. Por padrão, a memória de um projeto não aparece em outro. Para ler a memória de outro projeto, é preciso identificar a origem e existir uma autorização ativa, com prazo de validade, criada na linha de comando local. A revogação passa a valer na próxima consulta. Um fato guardado ou um ponto de continuação não concede permissões.
 
 Worktrees do mesmo repositório Git compartilham a mesma identidade, portanto é possível alternar entre elas sem perder o contexto. Uma cópia comum ou um novo clone não herda essa identidade automaticamente. Isso evita misturar projetos que apenas se parecem.
 
@@ -68,6 +68,26 @@ Uma lembrança antiga nunca é alterada em silêncio. Uma correção cria um nov
 Ao iniciar ou retomar uma tarefa, e também depois da compactação de contexto, o plugin recupera uma pequena seleção da memória relevante para o projeto atual. Existe um limite claro de tamanho; o histórico inteiro não volta para a conversa.
 
 Também é possível usar a linha de comando ou as ferramentas MCP para registrar decisões, criar um ponto de continuação, consultar lembranças ou esquecer um assunto. As operações de leitura não alteram dados, e as operações de escrita têm permissões explícitas.
+
+## Versão 0.4: memória compacta, isolamento de tarefas e padrões recorrentes
+
+`memory_recall_compact` usa a [tabela fixa de códigos SMC/1](skills/scoped-memory/references/schema.md). Cada fato é transmitido uma vez, sem os campos duplicados `context` e `items` da resposta anterior. O limite se aplica ao pacote compacto. A contagem de tokens é uma estimativa local; a economia deve ser medida com o tokenizador do modelo utilizado. `memory_recall` continua disponível para clientes existentes.
+
+`memory_open_task` cria um ID novo para cada tarefa. `memory_task_checkpoint`, `memory_task_context` e `memory_close_task` operam somente nessa tarefa. Uma tarefa nova não herda pontos de continuação de tarefas antigas. Seu contexto pode incluir lembretes do usuário ou do projeto atual marcados explicitamente como `durable-rule`; esses lembretes não transferem autorizações de tarefas anteriores. A herança entre projetos também exige uma autorização local com prazo de validade.
+
+Para trabalhos repetidos, um script revisado localmente pode ser registrado como padrão candidato. Após duas referências diferentes a resultados bem-sucedidos, uma pessoa pode promovê-lo pela linha de comando local. `memory_pattern_predict` apenas sugere o script quando as características da tarefa coincidem exatamente, a impressão digital não mudou e o prazo não venceu. As referências são relatos do usuário; a ferramenta não verifica seu conteúdo. A sugestão não gera nem executa scripts e não autoriza leitura, alteração, experimentos nem envio de conteúdo.
+
+```bash
+# Demonstração local com um projeto sintético
+mkdir -p /tmp/demo-project/scripts
+printf 'print("demo")\n' > /tmp/demo-project/scripts/repeat.py
+scripts/scoped-memory --home /tmp/scoped-memory-demo init /tmp/demo-project
+scripts/scoped-memory --home /tmp/scoped-memory-demo task-open /tmp/demo-project
+scripts/scoped-memory --home /tmp/scoped-memory-demo recall-compact /tmp/demo-project --token-budget 512
+scripts/scoped-memory --home /tmp/scoped-memory-demo pattern-propose /tmp/demo-project repeat '{"schema":1}' scripts/repeat.py
+```
+
+Este serviço MCP usa stdio local. O acesso remoto exige uma camada separada de autorização local e de liberação das saídas; não exponha todas as ferramentas diretamente em uma rede pública. A versão 0.4 não altera as permissões de execução de tarefas externas.
 
 ## Camada de engenharia EIR/1
 
